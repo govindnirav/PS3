@@ -51,7 +51,7 @@ def create_sample_split(df: pd.Dataframe, id_column: str, training_frac: float =
 ########## Without hashlib ##########
 # TODO: Write a function which creates a sample split based in some id_column and training_frac.
 # Optional: If the dtype of id_column is a string, we can use hashlib to get an integer representation.
-def create_sample_split(df: pd.Dataframe, id_column: str, training_frac: float = 0.8) -> pd.Dataframe:
+def split_nohash(df: pd.Dataframe, id_column: str, training_frac: float = 0.8) -> pd.Dataframe:
     """Create sample split based on ID column.
 
     Parameters
