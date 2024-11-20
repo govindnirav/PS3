@@ -26,5 +26,8 @@ class Winsorizer(BaseEstimator, TransformerMixin):
         for i in X.columns:
             if i in self.quantiles_:
                 X[i] = X[i].clip(self.quantiles_[i][0], self.quantiles_[i][1])
-        return X
-                
+        return X 
+    
+    def set_output(self, transform='default'):
+        # This method is required to support the set_output method in the pipeline
+        return self
