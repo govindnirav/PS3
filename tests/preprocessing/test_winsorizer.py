@@ -32,3 +32,13 @@ def test_winsorizer(lower_quantile, upper_quantile):
 
     # Optional: Check that the transformed array has the same length as the original
     assert len(X_transformed) == len(X), "Transformed array length does not match the original array length"
+
+def test_winsorizer_correct(lower_quantile, upper_quantile):  
+    X = np.random.normal(0, 1, 1000)
+
+    Xt = Winsorizer(lower_quantile, upper_quantile).fit_transform(X)
+
+    assert (Xt.max() == np.percentile(X, upper_quantile * 100)) & (Xt.min() == np.percentile(X, lower_quantile * 100))
+    # Assert just checks if the condition is true, if not it raises an error.
+
+### Write a test for preprocessor.set_output(transform = "pandas") method yields a pandas DataFrame

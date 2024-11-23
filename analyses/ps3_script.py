@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from dask_ml.preprocessing import Categorizer
+from dask_ml.preprocessing import Categorizer # Allows us to work with categorical data
 from glum import GeneralizedLinearRegressor, TweedieDistribution
 from lightgbm import LGBMRegressor
 from sklearn.compose import ColumnTransformer
@@ -17,6 +17,7 @@ from ps3.preprocessing import Winsorizer
 # %%
 # load data
 df = load_transform()
+df.head()
 
 # %%
 # Train benchmark tweedie model. This is entirely based on the glum tutorial.
@@ -35,23 +36,24 @@ exposore allows us to compare the expected claim amount across different policyh
 # TODO: use your create_sample_split function here # Done
 df = create_sample_split(df = df, id_column = ["IDpol"], training_frac = 0.8)
 train = np.where(df["sample"] == "train")
-test = np.where(df["sample"] == "test")
+test = np.where(df["sample"] == "test") # Identifies the train and test set in the main df
 df_train = df.iloc[train].copy()
-df_test = df.iloc[test].copy()
+df_test = df.iloc[test].copy() # Creates a copy of the train and test set. This is a deep copy.
 
 categoricals = ["VehBrand", "VehGas", "Region", "Area", "DrivAge", "VehAge", "VehPower"]
 
 predictors = categoricals + ["BonusMalus", "Density"]
-glm_categorizer = Categorizer(columns=categoricals)
+glm_categorizer = Categorizer(columns=categoricals) # An instance of the Categorizer class is created.
 
-X_train_t = glm_categorizer.fit_transform(df[predictors].iloc[train])
-X_test_t = glm_categorizer.transform(df[predictors].iloc[test])
+X_train_t = glm_categorizer.fit_transform(df[predictors].iloc[train]) # Fit_transform is not specified in the documentation, but it can be used because we call upon the class.
+X_test_t = glm_categorizer.transform(df[predictors].iloc[test]) 
 y_train_t, y_test_t = y.iloc[train], y.iloc[test]
 w_train_t, w_test_t = weight[train], weight[test]
 
-TweedieDist = TweedieDistribution(1.5)
-t_glm1 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True)
-t_glm2 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True)
+TweedieDist = TweedieDistribution(1.5) # Tweedie distribution with power 1.5. So a mix of Poisson and Gamma distribution.
+t_glm1 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True) 
+# Fit it to the data using tweedie distribution function as a link function.
+# l1_ratio is the mixing parameter for the penalty term. 1 is Lasso, 0 is Ridge.
 t_glm1.fit(X_train_t, y_train_t, sample_weight=w_train_t) # Not sure if this alters t_glm1 so I redifined it another model above to use in the pipeline below.
 
 
@@ -84,6 +86,10 @@ print(
     )
 )
 
+"""
+Easier to interprest loss values relative to each other. The loss on the test set is higher than the training set, which is expected. 
+"""
+
 # %%
 # TODO: Let's add splines for BonusMalus and Density and use a Pipeline.
 # Steps: 
@@ -97,17 +103,21 @@ print(
 # Let's put together a pipeline
 numeric_cols = ["BonusMalus", "Density"]
 numeric_pipeline = Pipeline(steps=[
-    ('scaler', StandardScaler()), 
-    ('spline transformer', SplineTransformer(knots="quantile"))
+    ('scaler', StandardScaler()), # Standardizes the features by removing the mean and scaling to unit variance.
+    ('spline transformer', SplineTransformer(knots="quantile")) # SplineTransformer is a class that allows us to transform the data into splines according to the knots specified.
 ])
-preprocessor = ColumnTransformer(
+preprocessor = ColumnTransformer( # Instance of the class ColumnTransformer from the sklearn package.
     transformers=[
         # TODO: Add numeric transforms here # Done
         ("num", numeric_pipeline, numeric_cols),
         ("cat", OneHotEncoder(sparse_output=False, drop="first"), categoricals),
     ]
 )
-preprocessor.set_output(transform="pandas")
+# In a pipeline, you have lists of tuples where the first element is the name of the step and the second element is the transformer object.
+
+t_glm2 = GeneralizedLinearRegressor(family=TweedieDist, l1_ratio=1, fit_intercept=True) # Redefining the model to use in the pipeline below. 
+
+preprocessor.set_output(transform = "pandas")
 model_pipeline = Pipeline(steps=[
     # TODO: Define pipeline steps here # Done
     ('preprocessor', preprocessor),
@@ -120,7 +130,9 @@ model_pipeline
 # %%
 
 # let's check that the transforms worked
-X = model_pipeline[:-1].fit_transform(df_train) # Need to attribute it to some sort of variable
+X = model_pipeline[:-1].fit_transform(df_train) # Need to attribute it to some sort of variable 
+# Can call pipeline steps with bracket indexing.
+
 #print(X)
 
 model_pipeline.fit(df_train, y_train_t, model__sample_weight=w_train_t)
@@ -188,6 +200,10 @@ print(
     )
 )
 
+"""
+Training loss is a lot lower than testing loss. Might want to treat it so that the loss difference is closer. Don't want to overfit.
+"""
+
 # %%
 # TODO: Let's tune the LGBM to reduce overfitting.
 # Steps:
@@ -199,16 +215,17 @@ print(
 # and the number of estimators somewhat aligned -> tune learning_rate and n_estimators
 
 param_grid = {
-    'model__learning_rate': [0.01, 0.05, 0.1],
+    'model__learning_rate': [0.01, 0.02, 0.03, 0.04, 0.05, 0.1],
     'model__n_estimators': [50, 100, 200]
 }
+# What are good values of leaning rate? It's an art. Lower learning rates are better for smaller datasets, but take longer to train.
 
 cv = GridSearchCV(
     estimator=model_pipeline,
     param_grid=param_grid,
     scoring='neg_mean_squared_error',
     cv=5,
-    verbose=2,
+    verbose=2, # Test each combination of each parameter value. Evaluetes the fit using the cross-validation set.
     n_jobs=-1
 )
 
@@ -237,6 +254,8 @@ print(
         np.sum(df["Exposure"].values[test] * df_test["pp_t_lgbm"]),
     )
 )
+
+
 # %%
 # Let's compare the sorting of the pure premium predictions
 

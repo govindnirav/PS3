@@ -5,7 +5,7 @@ from sklearn.utils.validation import check_is_fitted
 
 # TODO: Write a simple Winsorizer transformer which takes a lower and upper quantile and cuts the
 # data accordingly
-class Winsorizer(BaseEstimator, TransformerMixin):
+class Winsorizer(BaseEstimator, TransformerMixin): # Base estimator is the base class for all estimators in scikit-learn.
     def __init__(self, lower_quantile : float = 0.05, upper_quantile : float = 0.95):
         self.lower_quantile = lower_quantile
         self.upper_quantile = upper_quantile
@@ -28,6 +28,21 @@ class Winsorizer(BaseEstimator, TransformerMixin):
                 X[i] = X[i].clip(self.quantiles_[i][0], self.quantiles_[i][1])
         return X 
     
+    
     def set_output(self, transform='default'):
         # This method is required to support the set_output method in the pipeline
         return self
+
+
+    ##################### Corrections #####################
+
+    #def fit_correct(self, X, y=None):
+        self.lower_bound = np.percentile(X, self.lower_quantile * 100)
+        self.upper_bound = np.percentile(X, self.upper_quantile * 100)
+        return self
+    
+
+    #def transform_correct(self, X):
+        check_is_fitted(self) # Check if the estimator is fitted by verifying the presence of fitted attributes (ending with a trailing underscore)
+        X_clipped = np.clip(X, self.lower_bound, self.upper_bound)
+        return X_clipped

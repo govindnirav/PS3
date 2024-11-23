@@ -52,7 +52,7 @@ def load_transform():
 
     # Note: Zero claims must be ignored in severity models,
     # because the support is (0, inf) not [0, inf).
-    df.loc[(df.ClaimAmount <= 0) & (df.ClaimNb >= 1), "ClaimNb"] = 0
+    df.loc[(df.ClaimAmount <= 0) & (df.ClaimNb >= 1), "ClaimNb"] = 0 # Dont want to consider claim for no money. Maybe speak to client.
 
     # correct for unreasonable observations (that might be data error)
     # see case study paper
