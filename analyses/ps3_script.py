@@ -34,7 +34,7 @@ exposore allows us to compare the expected claim amount across different policyh
 
 
 # TODO: use your create_sample_split function here # Done
-df = create_sample_split(df = df, id_column = ["IDpol"], training_frac = 0.8)
+df = create_sample_split(df = df, id_column = "IDpol", training_frac = 0.8)
 train = np.where(df["sample"] == "train")
 test = np.where(df["sample"] == "test") # Identifies the train and test set in the main df
 df_train = df.iloc[train].copy()
@@ -314,4 +314,90 @@ LGBM does better than the baseline and is the most pronounced curve compared to 
 The Oracle is the benchmark, and it means that almost all the claims are driven by a very very small fraction of the policyholders.
 """
 
+#%%
+############################################################## PS 4 ################################################################
 # %%
+###### Qustion 1: Monotonicity Constraints ######
+# TODO: Create a plot of the average claims per BonusMalus group, make sure to weigh them by exposure. # Done
+# What will/could happen if we do not include a monotonicity constraint?  # Done
+
+plt.figure(figsize=(10, 6))
+df.groupby("BonusMalus")["PurePremium"].mean().plot() # Plotting average pure pqremium per BonusMalus. Using pure premium because it is normalised by exposure.
+plt.xlabel("BonusMalus")
+plt.ylabel("Average Pure Premium")
+plt.title("Average Pure Premium per BonusMalus")
+plt.show()
+
+"""
+Pure premium is affected by BonusMalus, but not in a strictly increasing manner. 
+If we do not include a monotonicity constraint, the model could predict a decrease pure premium for a higher BonusMalus.
+This is intuitively unrealistic despite it existing in the data.
+"""
+
+# TODO: Create a new model pipeline or estimator called constrained_lgbm # Done
+# Introduce an increasing monotonicity constrained for BonusMalus. # Done
+# Note: We have to provide a list of the same length as our features with 0s everywhere except for BonusMalus where we put a 1. # Done
+
+transformed_df = preprocessor.fit_transform(df_train)
+const_predictors = preprocessor.get_feature_names_out()
+
+monotonicity_constraint = [0] * len(const_predictors)
+bonus_malus_indices = [i for i, name in enumerate(const_predictors) if "BonusMalus" in name]
+for i in bonus_malus_indices:
+    monotonicity_constraint[i] = 1
+
+constrained_lgbm =  LGBMRegressor(objective = 'tweedie', tweedie_variance_power = 1.5, monotone_constraints = monotonicity_constraint)
+
+constrained_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('model', constrained_lgbm)
+])
+
+constrained_pipeline
+# TODO: Cross-validate and predict using the best estimator. Save the predictions in the column pp_t_lgbm_constrained. # Done
+
+cv_cons = GridSearchCV(
+    estimator=constrained_pipeline,
+    param_grid=param_grid,
+    scoring='neg_mean_squared_error',
+    cv=5,
+    verbose=2, # Test each combination of each parameter value. Evaluetes the fit using the cross-validation set.
+    n_jobs=-1
+)
+
+cv_cons.fit(X_train_t, y_train_t, model__sample_weight=w_train_t)
+
+df_test["pp_t_lgbm_constrained"] = cv_cons.best_estimator_.predict(X_test_t)
+df_train["pp_t_lgbm_constrained"] = cv_cons.best_estimator_.predict(X_train_t)
+
+print(
+    "training loss t_lgbm_constrained:  {}".format(
+        TweedieDist.deviance(y_train_t, df_train["pp_t_lgbm_constrained"], sample_weight=w_train_t)
+        / np.sum(w_train_t)
+    )
+)
+
+print(
+    "testing loss t_lgbm_constrained:  {}".format(
+        TweedieDist.deviance(y_test_t, df_test["pp_t_lgbm_constrained"], sample_weight=w_test_t)
+        / np.sum(w_test_t)
+    )
+)
+
+print(
+    "Total claim amount on test set, observed = {}, predicted = {}".format(
+        df["ClaimAmountCut"].values[test].sum(),
+        np.sum(df["Exposure"].values[test] * df_test["pp_t_lgbm_constrained"]),
+    )
+)
+
+
+# %%
+###### Qustion 2: Learning Curve ######
+# TODO: Re-fit the best constrained lgbm estimator from the cross-validation and
+# provide the tuples of the test and train dataset to the estimator via eval_set
+
+
+# TODO: Plot the learning curve by running lgb.plot_metric on the estimator 
+# (either the estimator directly or as last step of the pipeline)
+# What do you notice, is the estimator tuned optimally?

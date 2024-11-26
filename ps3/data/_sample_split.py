@@ -4,8 +4,9 @@ import numpy as np
 
 # TODO: Write a function which creates a sample split based in some id_column and training_frac.
 # Optional: If the dtype of id_column is a string, we can use hashlib to get an integer representation.
-def create_sample_split(df: pd.Dataframe, id_column: str, training_frac: float = 0.8) -> pd.Dataframe:
-    """Create sample split based on ID column.
+def create_sample_split(df: pd.DataFrame, id_column: str, training_frac: float = 0.8) -> pd.DataFrame:
+    """
+    Create sample split based on ID column.
 
     Parameters
     ----------
@@ -35,6 +36,6 @@ def create_sample_split(df: pd.Dataframe, id_column: str, training_frac: float =
             Computing the modulo of the hash value by 100 will give us a number between 0 and 99. It will also yield the same results for the same input on any machine.
         """
     
-    df['sample'] = np.where(modulo < training_frac * 100, 'train', 'test') # All modulos below 80 are train, the rest are test
+    df["sample"] = np.where(modulo < training_frac * 100, "train", "test") # All modulos below 80 are train, the rest are test
 
     return df
