@@ -307,4 +307,11 @@ ax.set(
 ax.legend(loc="upper left")
 plt.plot()
 
+"""
+(0,0) is the safest driver in terms of pure premium. And (1,1) is the riskiest driver.
+Random baseline means the risk has nothing to do with the policy premium.
+LGBM does better than the baseline and is the most pronounced curve compared to GLM.
+The Oracle is the benchmark, and it means that almost all the claims are driven by a very very small fraction of the policyholders.
+"""
+
 # %%
