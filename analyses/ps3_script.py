@@ -5,6 +5,8 @@ import pandas as pd
 from dask_ml.preprocessing import Categorizer # Allows us to work with categorical data
 from glum import GeneralizedLinearRegressor, TweedieDistribution
 from lightgbm import LGBMRegressor
+from lightgbm import plot_metric
+from lightgbm import early_stopping, log_evaluation # Maybe i dont need
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import auc
 from sklearn.model_selection import GridSearchCV
@@ -235,14 +237,14 @@ df_test["pp_t_lgbm"] = cv.best_estimator_.predict(X_test_t)
 df_train["pp_t_lgbm"] = cv.best_estimator_.predict(X_train_t)
 
 print(
-    "training loss t_lgbm:  {}".format(
+    "training loss t_lgbm_cv:  {}".format(
         TweedieDist.deviance(y_train_t, df_train["pp_t_lgbm"], sample_weight=w_train_t)
         / np.sum(w_train_t)
     )
 )
 
 print(
-    "testing loss t_lgbm:  {}".format(
+    "testing loss t_lgbm_cv:  {}".format(
         TweedieDist.deviance(y_test_t, df_test["pp_t_lgbm"], sample_weight=w_test_t)
         / np.sum(w_test_t)
     )
@@ -338,15 +340,20 @@ This is intuitively unrealistic despite it existing in the data.
 # Introduce an increasing monotonicity constrained for BonusMalus. # Done
 # Note: We have to provide a list of the same length as our features with 0s everywhere except for BonusMalus where we put a 1. # Done
 
-transformed_df = preprocessor.fit_transform(df_train)
-const_predictors = preprocessor.get_feature_names_out()
+const_predictors = preprocessor.get_feature_names_out() # Get the feature names from the preprocessor.
+#print(len(const_predictors)) # 64
 
 monotonicity_constraint = [0] * len(const_predictors)
 bonus_malus_indices = [i for i, name in enumerate(const_predictors) if "BonusMalus" in name]
 for i in bonus_malus_indices:
     monotonicity_constraint[i] = 1
 
-constrained_lgbm =  LGBMRegressor(objective = 'tweedie', tweedie_variance_power = 1.5, monotone_constraints = monotonicity_constraint)
+constrained_lgbm =  LGBMRegressor(
+    objective = 'tweedie', 
+    tweedie_variance_power = 1.5, 
+    monotone_constraints = monotonicity_constraint,
+    monotone_constraints_method = 'basic'
+)
 
 constrained_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
@@ -354,6 +361,7 @@ constrained_pipeline = Pipeline(steps=[
 ])
 
 constrained_pipeline
+
 # TODO: Cross-validate and predict using the best estimator. Save the predictions in the column pp_t_lgbm_constrained. # Done
 
 cv_cons = GridSearchCV(
@@ -361,7 +369,7 @@ cv_cons = GridSearchCV(
     param_grid=param_grid,
     scoring='neg_mean_squared_error',
     cv=5,
-    verbose=2, # Test each combination of each parameter value. Evaluetes the fit using the cross-validation set.
+    verbose=2,
     n_jobs=-1
 )
 
@@ -397,7 +405,64 @@ print(
 # TODO: Re-fit the best constrained lgbm estimator from the cross-validation and
 # provide the tuples of the test and train dataset to the estimator via eval_set
 
+best_constrained_pipeline = cv_cons.best_estimator_
+best_constrained_pipeline
 
+best_constrained_lgbm = best_constrained_pipeline.named_steps['model']
+
+# Refit the model with eval_set
+best_constrained_pipeline.fit(
+    X_train_t, 
+    y_train_t,
+    model__sample_weight=w_train_t,
+    model__eval_set=[(X_train_t, y_train_t), (X_test_t, y_test_t)],
+    model__eval_metric='tweedie'
+)
+"""
+The block of code above does not work and throws an error about training data not being in the same shape as the test data.
+i don't know why this is the case. I tried to fix it. Does not work. So will wait for solutions.
+"""
+#%%
+# Predict on train and test sets
+df_train["pp_t_lgbm_constrained_refit"] = best_constrained_pipeline.predict(X_train_t)
+df_test["pp_t_lgbm_constrained_refit"] = best_constrained_pipeline.predict(X_test_t)
+
+print(
+    "Refit training loss t_lgbm_constrained:  {}".format(
+        TweedieDist.deviance(
+            y_train_t, df_train["pp_t_lgbm_constrained_refit"], sample_weight=w_train_t
+        ) / np.sum(w_train_t)
+    )
+)
+
+print(
+    "Refit testing loss t_lgbm_constrained:  {}".format(
+        TweedieDist.deviance(
+            y_test_t, df_test["pp_t_lgbm_constrained_refit"], sample_weight=w_test_t
+        ) / np.sum(w_test_t)
+    )
+)
+
+print(
+    "Total claim amount on test set, observed = {}, predicted = {}".format(
+        df["ClaimAmountCut"].values[test].sum(),
+        np.sum(df["Exposure"].values[test] * df_test["pp_t_lgbm_constrained_refit"]),
+    )
+)
+
+#%%
 # TODO: Plot the learning curve by running lgb.plot_metric on the estimator 
 # (either the estimator directly or as last step of the pipeline)
+
+plot_metric(
+    booster = best_constrained_lgbm,
+    metric = 'tweedie',
+    title = 'Learning Curve',
+    figsize = (10, 6),
+    xlabel = 'Iterations',
+    ylabel = 'Tweedie Deviance'
+)
+
+
 # What do you notice, is the estimator tuned optimally?
+# %%
